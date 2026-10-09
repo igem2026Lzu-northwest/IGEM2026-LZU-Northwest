@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>反馈数据管理后台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            flex: 1;
+            text-align: center;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+        }
+
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+        }
+
+        .stat-card .label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .controls {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .controls input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .controls button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .controls button:hover {
+            background: #5a67d8;
+        }
+
+        .refresh-btn {
+            background: #28a745;
+        }
+
+        .refresh-btn:hover {
+            background: #218838;
+        }
+
+        table {
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
+
+        tr:hover {
+            background: #f5f5f5;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .delete-btn:hover {
+            background: #c82333;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        @media (max-width: 768px) {
+            th, td {
+                font-size: 12px;
+                padding: 8px;
+            }
+            .stat-card .number {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 反馈数据管理后台</h1>
+
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="number" id="totalCount">0</div>
+                <div class="label">总反馈数</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="todayCount">0</div>
+                <div class="label">今日新增</div>
+            </div>
+            <div class="stat-card">
+                <div class="number" id="lastUpdate">-</div>
+                <div class="label">最后更新</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="searchInput" placeholder="搜索专业、需求或建议..." onkeyup="filterTable()">
+            <button onclick="fetchFeedback()" class="refresh-btn">🔄 刷新</button>
+            <button onclick="exportData()">📥 导出数据</button>
+        </div>
+
+        <div id="tableContainer">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://feedback-api-pd22.onrender.com/api/feedback';
+        let allFeedback = [];
+
+        // 获取反馈数据
+        async function fetchFeedback() {
+            try {
+                const response = await fetch(API_URL);
+                const result = await response.json();
+                
+                if (result.success) {
+                    allFeedback = result.data;
+                    renderTable(allFeedback);
+                    updateStats(allFeedback);
+                } else {
+                    showError('获取数据失败');
+                }
+            } catch (error) {
+                console.error('获取反馈失败:', error);
+                showError('连接失败，请检查网络');
+            }
+        }
+
+        // 渲染表格
+        function renderTable(data) {
+            const container = document.getElementById('tableContainer');
+            
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="empty">暂无反馈数据</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>专业</th>
+                            <th>需求</th>
+                            <th>建议</th>
+                            <th>IP</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            data.forEach(item => {
+                const time = new Date(item.timestamp).toLocaleString('zh-CN');
+                html += `
+                    <tr>
+                        <td style="white-space: nowrap;">${time}</td>
+                        <td><strong>${escapeHtml(item.major)}</strong></td>
+                        <td>${escapeHtml(item.requirement)}</td>
+                        <td>${escapeHtml(item.suggestion)}</td>
+                        <td style="font-family: monospace; font-size: 12px;">${item.ip || '-'}</td>
+                        <td><button class="delete-btn" onclick="deleteFeedback('${item.id}')">删除</button></td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // 更新统计
+        function updateStats(data) {
+            const total = data.length;
+            document.getElementById('totalCount').innerText = total;
+
+            // 计算今日新增
+            const today = new Date().toDateString();
+            const todayCount = data.filter(item => {
+                return new Date(item.timestamp).toDateString() === today;
+            }).length;
+            document.getElementById('todayCount').innerText = todayCount;
+
+            // 最后更新时间
+            if (data.length > 0) {
+                const lastTime = new Date(data[0].timestamp).toLocaleString('zh-CN');
+                document.getElementById('lastUpdate').innerText = lastTime;
+            } else {
+                document.getElementById('lastUpdate').innerText = '-';
+            }
+        }
+
+        // 搜索过滤
+        function filterTable() {
+            const keyword = document.getElementById('searchInput').value.toLowerCase();
+            if (!keyword) {
+                renderTable(allFeedback);
+                return;
+            }
+
+            const filtered = allFeedback.filter(item => {
+                return item.major.toLowerCase().includes(keyword) ||
+                       item.requirement.toLowerCase().includes(keyword) ||
+                       item.suggestion.toLowerCase().includes(keyword);
+            });
+            renderTable(filtered);
+        }
+
+        // 删除反馈
+        async function deleteFeedback(id) {
+            if (!confirm('确定要删除这条反馈吗？')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('删除成功');
+                    fetchFeedback();
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                console.error('删除失败:', error);
+                alert('删除失败');
+            }
+        }
+
+        // 导出数据为 CSV
+        function exportData() {
+            if (allFeedback.length === 0) {
+                alert('没有数据可导出');
+                return;
+            }
+
+            // CSV 表头
+            const headers = ['时间', '专业', '需求', '建议', 'IP'];
+            const rows = [headers];
+
+            allFeedback.forEach(item => {
+                rows.push([
+                    new Date(item.timestamp).toLocaleString('zh-CN'),
+                    item.major,
+                    item.requirement,
+                    item.suggestion,
+                    item.ip || ''
+                ]);
+            });
+
+            // 转换为 CSV 字符串
+            const csvContent = rows.map(row => 
+                row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')
+            ).join('\n');
+
+            // 下载文件
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.setAttribute('download', `feedback_${new Date().toISOString().slice(0,19)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // 显示错误
+        function showError(msg) {
+            const container = document.getElementById('tableContainer');
+            container.innerHTML = `<div class="empty">❌ ${msg}</div>`;
+        }
+
+        // 防 XSS
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+                return c;
+            });
+        }
+
+        // 自动刷新（每30秒）
+        setInterval(() => {
+            fetchFeedback();
+        }, 30000);
+
+        // 页面加载时获取数据
+        fetchFeedback();
+    </script>
+</body>
+</html>
